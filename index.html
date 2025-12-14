@@ -20,9 +20,9 @@
     </script>
     
     <script type="module">
-        // three.js モジュールのインポート
         import * as THREE from 'three';
         // GLTFLoaderをインポート（examples/jsm/loaders/GLTFLoader.jsから）
+        import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
         // ★★★ ここをあなたのglbファイル名に書き換えてください ★★★
@@ -85,10 +85,11 @@
                 console.error(error);
             }
         );
-
+        const controls = new OrbitControls(camera, renderer.domElement);
         // アニメーションループ
         function animate() {
             requestAnimationFrame(animate);
+            controls.update();
             if (mixer) mixer.update(clock.getDelta());
             renderer.render(scene, camera);
         }
