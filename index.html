@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>3D Viewer</title>
+    <style>
+        /* 画面いっぱいに表示する設定 */
+        body { margin: 0; overflow: hidden; background-color: #f0f0f0; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.166.1/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.166.1/examples/jsm/"
+            }
+        }
+    </script>
+    
+    <script type="module">
+        // three.js モジュールのインポート
+        import * as THREE from 'three';
+        // GLTFLoaderをインポート（examples/jsm/loaders/GLTFLoader.jsから）
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // ★★★ ここをあなたのglbファイル名に書き換えてください ★★★
+        const MODEL_FILE_NAME = './model.glb'; 
+
+        const scene = new THREE.Scene();
+        // カメラ設定
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 1, 3);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // ライト設定
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 2);
+        dirLight.position.set(5, 10, 7);
+        scene.add(dirLight);
+
+        let mixer;
+        const clock = new THREE.Clock();
+        const loader = new GLTFLoader(); // 読み込みもTHREE.GLTFLoaderからGLTFLoaderに変更
+
+        // モデルの読み込み
+        loader.load(
+            MODEL_FILE_NAME,
+            function (gltf) {
+                const model = gltf.scene;
+                scene.add(model);
+
+                // アニメーションがあれば再生
+                if (gltf.animations && gltf.animations.length > 0) {
+                    mixer = new THREE.AnimationMixer(model);
+                    gltf.animations.forEach((clip) => {
+                        mixer.clipAction(clip).play();
+                    });
+                }
+
+                // モデルを画面中央・適切なサイズに自動調整
+                const box = new THREE.THREE.Box3().setFromObject(model);
+                const center = box.getCenter(new THREE.THREE.Vector3());
+                const size = box.getSize(new THREE.THREE.Vector3());
+
+                model.position.x += (model.position.x - center.x);
+                model.position.y += (model.position.y - center.y);
+                model.position.z += (model.position.z - center.z);
+                
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const fov = camera.fov * (Math.PI / 180);
+                let cameraZ = Math.abs(maxDim / 2 * Math.tan(fov * 2));
+                cameraZ *= 2.0; // カメラ距離
+                camera.position.z = cameraZ;
+                camera.updateProjectionMatrix();
+            },
+            undefined,
+            function (error) {
+                console.error(error);
+            }
+        );
+
+        // アニメーションループ
+        function animate() {
+            requestAnimationFrame(animate);
+            if (mixer) mixer.update(clock.getDelta());
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // リサイズ対応
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
