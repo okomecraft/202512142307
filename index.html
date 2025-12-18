@@ -93,13 +93,21 @@
         controls.maxDistance = 10;
 
         // アニメーションループ
+        // 1. ループの外で時計を作成
+        const clock = new THREE.Clock();
+        
         function animate() {
             requestAnimationFrame(animate);
-            controls.target.set(0, 1.0, 0);
+        
+            // 2. 前のフレームからの経過時間を取得
+            const delta = clock.getDelta();
+        
+            // 3. ミキサーに正確な経過時間を渡す
+            if (mixer) {
+                mixer.update(delta); 
+            }
+        
             controls.update();
-            if (mixer) mixer.update(clock.getDelta());
-
-            // scene.position.z += 0.05; // 0.05は移動速度。適切な値に調整してください。
             renderer.render(scene, camera);
         }
         
@@ -116,5 +124,6 @@
 </body>
 
 </html>
+
 
 
