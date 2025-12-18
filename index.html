@@ -51,9 +51,7 @@
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
         controls.zoomSpeed = 0.4; // ズーム感度をマイルドに
-        
-        // ★注視点を地面からキャラクターの高さ（約1m）へオフセット
-        controls.target.set(0, 1.0, 0); 
+        controls.target.set(0, 1.0, 0); // ★注視点を地面からキャラクターの高さ（約1m）へオフセット
 
         // モデル読み込み
         const loader = new GLTFLoader();
@@ -108,4 +106,5 @@
     </script>
 </body>
 </html>
+
 
