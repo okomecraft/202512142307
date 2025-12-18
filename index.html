@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <title>3D Viewer</title>
     <style>
-        /* 画面いっぱいに表示する設定 */
         body { margin: 0; overflow: hidden; background-color: #f0f0f0; }
         canvas { display: block; width: 100vw; height: 100vh; }
     </style>
@@ -21,15 +20,12 @@
     
     <script type="module">
         import * as THREE from 'three';
-        // GLTFLoaderをインポート（examples/jsm/loaders/GLTFLoader.jsから）
-        import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        // ★★★ ここをあなたのglbファイル名に書き換えてください ★★★
         const MODEL_FILE_NAME = './model.glb'; 
 
         const scene = new THREE.Scene();
-        // カメラ設定
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
         camera.position.set(0, 1, 3);
 
@@ -38,7 +34,6 @@
         renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        // ライト設定
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
         scene.add(ambientLight);
         const dirLight = new THREE.DirectionalLight(0xffffff, 2);
@@ -46,17 +41,15 @@
         scene.add(dirLight);
 
         let mixer;
-        const clock = new THREE.Clock();
-        const loader = new GLTFLoader(); // 読み込みもTHREE.GLTFLoaderからGLTFLoaderに変更
+        const clock = new THREE.Clock(); // clockの宣言はここ1回だけにする
+        const loader = new GLTFLoader();
 
-        // モデルの読み込み
         loader.load(
             MODEL_FILE_NAME,
             function (gltf) {
                 const model = gltf.scene;
                 scene.add(model);
 
-                // アニメーションがあれば再生
                 if (gltf.animations && gltf.animations.length > 0) {
                     mixer = new THREE.AnimationMixer(model);
                     gltf.animations.forEach((clip) => {
@@ -64,10 +57,10 @@
                     });
                 }
 
-                // モデルを画面中央・適切なサイズに自動調整
-                const box = new THREE.THREE.Box3().setFromObject(model);
-                const center = box.getCenter(new THREE.THREE.Vector3());
-                const size = box.getSize(new THREE.THREE.Vector3());
+                // --- 修正ポイント：THREE.THREE の重複を削除 ---
+                const box = new THREE.Box3().setFromObject(model);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
 
                 model.position.x += (model.position.x - center.x);
                 model.position.y += (model.position.y - center.y);
@@ -76,8 +69,11 @@
                 const maxDim = Math.max(size.x, size.y, size.z);
                 const fov = camera.fov * (Math.PI / 180);
                 let cameraZ = Math.abs(maxDim / 2 * Math.tan(fov * 2));
-                cameraZ *= 2.0; // カメラ距離
+                cameraZ *= 2.0; 
                 camera.position.z = cameraZ;
+
+                // 修正：高さ調整（キャラクターの腰あたりを見るようにする）
+                controls.target.set(0, size.y / 2, 0); 
                 camera.updateProjectionMatrix();
             },
             undefined,
@@ -85,36 +81,26 @@
                 console.error(error);
             }
         );
+
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.autoRotate = true;
         controls.zoomSpeed = 0.2;
         controls.panSpeed = 0.5;
         controls.minDistance = 0.5;
-        controls.maxDistance = 10;
+        controls.maxDistance = 20;
 
-        // アニメーションループ
-        // 1. ループの外で時計を作成
-        const clock = new THREE.Clock();
-        
         function animate() {
             requestAnimationFrame(animate);
-        
-            // 2. 前のフレームからの経過時間を取得
             const delta = clock.getDelta();
-        
-            // 3. ミキサーに正確な経過時間を渡す
             if (mixer) {
                 mixer.update(delta); 
             }
-        
             controls.update();
             renderer.render(scene, camera);
         }
         
-        controls.autoRotate = true;
         animate();
 
-        // リサイズ対応
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
@@ -122,9 +108,4 @@
         });
     </script>
 </body>
-
 </html>
-
-
-
-
