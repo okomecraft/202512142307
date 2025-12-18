@@ -95,6 +95,7 @@
         // アニメーションループ
         function animate() {
             requestAnimationFrame(animate);
+            controls.target.set(0, 1.0, 0);
             controls.update();
             if (mixer) mixer.update(clock.getDelta());
 
@@ -115,4 +116,5 @@
 </body>
 
 </html>
+
 
