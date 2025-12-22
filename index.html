@@ -66,13 +66,21 @@ https://okomecraft.github.io/202512142307/
 
                 if (gltf.animations && gltf.animations.length > 0) {
                     mixer = new THREE.AnimationMixer(model);
+                    // gltf.animations.forEach((clip) => {
+                    //     const action = mixer.clipAction(clip);
+                    //     // ★再生速度を微調整
+                    //     action.timeScale = ANIMATION_SPEED;
+                    //     // 滑らかな補間を維持する設定
+                    //     action.play();
+                    // });
+                    // アニメーション再生部分を以下のように書き換え
                     gltf.animations.forEach((clip) => {
                         const action = mixer.clipAction(clip);
                         
-                        // ★再生速度を微調整
-                        action.timeScale = ANIMATION_SPEED;
+                        // 補間方法を「離散（コマ送り）」ではなく「滑らか」に強制する
+                        // （通常はデフォルトでOKですが、念のため設定します）
+                        action.setLoop(THREE.LoopRepeat);
                         
-                        // 滑らかな補間を維持する設定
                         action.play();
                     });
                 }
@@ -109,6 +117,7 @@ https://okomecraft.github.io/202512142307/
     </script>
 </body>
 </html>
+
 
 
 
