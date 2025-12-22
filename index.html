@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>3D Viewer - Mitsuhashi-kun</title>
+    <title>3D Viewer - Mitsuhashi-kun Big Label</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #f0f0f0; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -14,14 +14,22 @@
             pointer-events: none; z-index: 1000; border-radius: 4px;
         }
 
-        /* キャラクター名ラベル */
+        /* キャラクター名ラベル：4倍サイズ・枠線なし */
         #name-label {
             position: absolute; display: none;
-            padding: 5px 15px; background: rgba(255, 255, 255, 0.9);
-            color: #333; font-weight: bold; border-radius: 20px;
-            border: 2px solid #ff4757; pointer-events: none;
-            transform: translate(-50%, -100%); z-index: 1500;
-            font-family: sans-serif;
+            color: #ff4757; 
+            font-size: 72px; /* 大きさを約4倍に */
+            font-weight: 900; 
+            pointer-events: none;
+            transform: translate(-50%, -100%); 
+            z-index: 1500;
+            font-family: "Arial Black", sans-serif;
+            /* 枠線の代わりに文字の縁取りを付けて視認性をアップ */
+            text-shadow: 
+                3px 3px 0 #fff, -3px -3px 0 #fff,
+                3px -3px 0 #fff, -3px 3px 0 #fff,
+                0 3px 0 #fff, 0 -3px 0 #fff,
+                3px 0 0 #fff, -3px 0 0 #fff;
         }
 
         .controls {
@@ -91,7 +99,7 @@
         controls.target.set(0, 1.0, 0);
         controls.autoRotate = true;
 
-        // 影のテクスチャ作成
+        // 影の作成
         function createShadowTexture() {
             const canvas = document.createElement('canvas');
             canvas.width = 128; canvas.height = 128;
@@ -104,14 +112,12 @@
             return new THREE.CanvasTexture(canvas);
         }
 
-        // 影の作成
         blobShadow = new THREE.Mesh(
             new THREE.PlaneGeometry(1.2, 1.2),
             new THREE.MeshBasicMaterial({ map: createShadowTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide })
         );
         blobShadow.rotation.x = -Math.PI / 2;
-        // ★微調整ポイント：ここを 0.001 や -0.001 などに調整してください
-        blobShadow.position.y = 0.01; 
+        blobShadow.position.y = 0.002; 
         scene.add(blobShadow);
 
         new GLTFLoader().load('./model.glb', (gltf) => {
@@ -123,14 +129,13 @@
                 action.timeScale = 2.0; 
                 gltf.animations[0].tracks.forEach(t => t.setInterpolation(THREE.InterpolateDiscrete));
                 action.play();
-                debugLog("Mitsuhashi-kun is here.");
+                debugLog("Mitsuhashi-kun loaded.");
             }
         });
 
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
-        // 毎フレームの処理
         function animate() {
             requestAnimationFrame(animate);
             if (mixer) mixer.update(1 / 60); 
@@ -142,12 +147,12 @@
                 blobShadow.scale.set(Math.max(0.1, 1.0 - model.position.y * 0.3), Math.max(0.1, 1.0 - model.position.y * 0.3), 1);
             }
 
-            // --- 名前ラベルの追従処理 ---
+            // --- 名前ラベルの追従処理：位置をさらに高く ---
             if (model && nameLabel.style.display === 'block') {
                 const vector = new THREE.Vector3();
-                // キャラクターの頭上付近（高さ2.0m地点）を取得
                 vector.setFromMatrixPosition(model.matrixWorld);
-                vector.y += 2.0; 
+                // ★高さを 2.8 にアップ（キャラクターの大きさに合わせて調整してください）
+                vector.y += 2.8; 
                 vector.project(camera);
 
                 const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
@@ -161,14 +166,11 @@
         }
         animate();
 
-        // マウス移動（ホバー）判定
         window.addEventListener('mousemove', (e) => {
             mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
             const hits = raycaster.intersectObjects(scene.children, true);
-            
-            // モデルに当たっていれば名前を表示
             nameLabel.style.display = (hits.length > 0) ? 'block' : 'none';
         });
 
@@ -196,5 +198,3 @@
     </script>
 </body>
 </html>
-
-
