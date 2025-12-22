@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>3D Viewer - Interactive App</title>
+    <title>3D Viewer - Blob Shadow Mode</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #f0f0f0; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -14,9 +14,8 @@
             pointer-events: none; z-index: 1000; border-radius: 4px;
         }
 
-        /* 下部中央のボタンエリア */
         .controls {
-            position: absolute; display: none; /* 初期は非表示 */
+            position: absolute; display: none;
             bottom: 50px; left: 50%; transform: translateX(-50%);
             display: flex; gap: 20px; z-index: 2000;
         }
@@ -28,7 +27,6 @@
             transition: all 0.2s;
         }
         .btn:active { transform: scale(0.95); }
-
         #reset-btn { background: #ff4757; }
         #play-btn { background: #2ed573; }
     </style>
@@ -75,32 +73,64 @@
         dirLight.position.set(5, 10, 7);
         scene.add(dirLight);
 
-        let mixer, action;
+        let mixer, model, action, blobShadow;
         const clock = new THREE.Clock();
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.target.set(0, 1.0, 0);
-
-        // オートターンの設定
-        controls.autoRotate = true; // 最初は回転させる
+        controls.autoRotate = true;
         controls.autoRotateSpeed = 1.0;
+
+        // --- 丸い影 (Blob Shadow) の作成 ---
+        const shadowGeo = new THREE.CircleGeometry(0.4, 32); // サイズは0.4
+        const shadowMat = new THREE.MeshBasicMaterial({ 
+            color: 0x000000, 
+            transparent: true, 
+            opacity: 0.4,
+            depthWrite: false // キャラクターと重なった時のチラつき防止
+        });
+        blobShadow = new THREE.Mesh(shadowGeo, shadowMat);
+        blobShadow.rotation.x = -Math.PI / 2; // 地面に平らに置く
+        blobShadow.position.y = 0.01; // 地面（0）よりわずかに上に浮かせてチラつきを防止
+        scene.add(blobShadow);
 
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
         new GLTFLoader().load('./model.glb', (gltf) => {
-            scene.add(gltf.scene);
+            model = gltf.scene;
+            scene.add(model);
             if (gltf.animations.length > 0) {
-                mixer = new THREE.AnimationMixer(gltf.scene);
+                mixer = new THREE.AnimationMixer(model);
                 action = mixer.clipAction(gltf.animations[0]);
                 action.timeScale = 2.0; 
                 gltf.animations[0].tracks.forEach(t => t.setInterpolation(THREE.InterpolateDiscrete));
                 action.play();
-                debugLog("Playing. Double-click model.");
+                debugLog("Blob Shadow Active. Double-click model.");
             }
         });
 
-        // ダブルクリックでUIを表示
+        // 影の更新ロジック
+        function updateShadow() {
+            if (!model || !blobShadow) return;
+
+            // 1. 影の位置をモデルの真下に合わせる (X, Z軸)
+            blobShadow.position.x = model.position.x;
+            blobShadow.position.z = model.position.z;
+
+            // 2. ボーンやメッシュの高さ（Y軸）を取得
+            // ※アニメーションでモデル自体が浮く場合に対応
+            const height = model.position.y; 
+
+            // 3. 高さに合わせて「透明度」と「大きさ」を変化させる
+            // 高くなるほど薄く (opacity減)、小さく (scale減) なる
+            const opacity = Math.max(0, 0.4 - height * 0.3);
+            const scale = Math.max(0.1, 1.0 - height * 0.5);
+
+            blobShadow.material.opacity = opacity;
+            blobShadow.scale.set(scale, scale, 1);
+        }
+
         window.addEventListener('dblclick', (e) => {
             mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
@@ -109,37 +139,27 @@
             uiPanel.style.display = hits.length > 0 ? 'flex' : 'none';
         });
 
-        // マウス操作中はオートターンを停止
-        controls.addEventListener('start', () => {
-            controls.autoRotate = false;
-        });
-
-        // 操作を止めてから3秒後にオートターンを再開させる処理
+        controls.addEventListener('start', () => { controls.autoRotate = false; });
         let rotateTimer;
         controls.addEventListener('end', () => {
             clearTimeout(rotateTimer);
-            rotateTimer = setTimeout(() => {
-                controls.autoRotate = true;
-            }, 3000); // 3秒間放置で回転開始
+            rotateTimer = setTimeout(() => { controls.autoRotate = true; }, 3000);
         });
 
-        // リセット & カメラを正面に戻す
         resetBtn.addEventListener('click', () => {
             if (action) {
                 action.fadeOut(0.5);
                 setTimeout(() => { action.stop(); action.reset(); }, 500);
             }
-            // カメラ位置を滑らかに戻す (OrbitControlsのターゲットは維持)
             camera.position.set(0, 1.5, 4);
             controls.update();
             debugLog("Reset & Camera centered.");
         });
 
-        // アニメーション再開
         playBtn.addEventListener('click', () => {
             if (action) {
                 action.reset();
-                action.fadeIn(0.5); // 滑らかに動き始める
+                action.fadeIn(0.5);
                 action.play();
                 debugLog("Animation Resumed.");
             }
@@ -148,7 +168,10 @@
         function animate() {
             requestAnimationFrame(animate);
             if (mixer) mixer.update(1 / 60); 
-            controls.update(); // オートターンの更新に必要
+            
+            updateShadow(); // 影の更新を毎フレーム実行
+            
+            controls.update();
             renderer.render(scene, camera);
         }
         animate();
