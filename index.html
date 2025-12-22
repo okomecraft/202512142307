@@ -102,7 +102,7 @@ https://okomecraft.github.io/202512142307/
             
             // 経過時間を取得（フレーム飛び防止のため最大値を制限）
             let delta = clock.getDelta();
-            if (delta > 0.1) delta = 0.5; 
+            if (delta > 0.1) delta = 0.1; 
             
             if (mixer) {
                 mixer.update(delta); 
@@ -123,6 +123,7 @@ https://okomecraft.github.io/202512142307/
     </script>
 </body>
 </html>
+
 
 
 
