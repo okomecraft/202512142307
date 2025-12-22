@@ -1,11 +1,8 @@
-<!--
-https://okomecraft.github.io/202512142307/
--->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>3D Viewer - Optimized</title>
+    <title>3D Viewer - Verified</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #f0f0f0; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -26,9 +23,7 @@ https://okomecraft.github.io/202512142307/
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        // --- 設定項目 ---
         const MODEL_FILE_NAME = './model.glb'; 
-        const ANIMATION_SPEED = 0.7; // 「早い」と感じる場合はここを 0.7 などに下げてください
 
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -39,7 +34,6 @@ https://okomecraft.github.io/202512142307/
         renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        // ライト設定
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.8);
         scene.add(ambientLight);
         const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
@@ -49,14 +43,11 @@ https://okomecraft.github.io/202512142307/
         let mixer;
         const clock = new THREE.Clock();
 
-        // カメラ操作設定
         const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;  // 操作に滑らかさを出す
-        controls.dampingFactor = 0.5;   // 0.05  
-        controls.zoomSpeed = 0.4;       // ズーム感度をマイルドに
-        controls.target.set(0, 1.0, 0); // ★注視点を地面からキャラクターの高さ（約1m）へオフセット
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.target.set(0, 1.0, 0);
 
-        // モデル読み込み
         const loader = new GLTFLoader();
         loader.load(
             MODEL_FILE_NAME,
@@ -66,55 +57,28 @@ https://okomecraft.github.io/202512142307/
 
                 if (gltf.animations && gltf.animations.length > 0) {
                     mixer = new THREE.AnimationMixer(model);
-                    // gltf.animations.forEach((clip) => {
-                    //     const action = mixer.clipAction(clip);
-                    //     // ★再生速度を微調整
-                    //     action.timeScale = ANIMATION_SPEED;
-                    //     // 滑らかな補間を維持する設定
-                    //     action.play();
-                    // });
-                    // アニメーション再生部分を以下のように書き換え
-                    // gltf.animations.forEach((clip) => {
-                    //     const action = mixer.clipAction(clip);
-                        
-                    //     // 補間方法を「離散（コマ送り）」ではなく「滑らか」に強制する
-                    //     // （通常はデフォルトでOKですが、念のため設定します）
-                    //     action.setLoop(THREE.LoopRepeat);
-                        
-                    //     action.play();
-                    // });
                     gltf.animations.forEach((clip) => {
                         const action = mixer.clipAction(clip);
-                        // 補間を「線形」に指定（足の先端などを滑らかにつなぐ）
-                        action.setInterpolation(THREE.InterpolateLinear); 
+                        // 補間を線形にして足の動きを正確にする
+                        action.setInterpolation(THREE.InterpolateLinear);
                         action.play();
                     });
                 }
-                console.log("Model and animations loaded successfully.");
             },
             undefined,
-            function (error) { console.error("Loading error:", error); }
+            function (error) { console.error(error); }
         );
 
-        // アニメーションループ
         function animate() {
             requestAnimationFrame(animate);
-            
-            // 経過時間を取得（フレーム飛び防止のため最大値を制限）
-            let delta = clock.getDelta();
-            if (delta > 0.1) delta = 0.1; 
-            
-            if (mixer) {
-                mixer.update(delta); 
-            }
-
+            // deltaの制限を緩め、現実的な時間に合わせる
+            const delta = Math.min(clock.getDelta(), 0.1);
+            if (mixer) mixer.update(delta);
             controls.update();
             renderer.render(scene, camera);
         }
-        
         animate();
 
-        // リサイズ対応
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
@@ -123,17 +87,3 @@ https://okomecraft.github.io/202512142307/
     </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
