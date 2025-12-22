@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>3D Viewer - Ready for Crossfade</title>
+    <title>3D Viewer - Animation Crossfade</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #f0f0f0; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -14,30 +14,27 @@
             pointer-events: none; z-index: 1000; border-radius: 4px;
         }
 
-        /* UIパネル（リセットボタン等） */
+        /* 切り替えボタンのコンテナ */
         .controls {
-            position: absolute; display: none;
-            bottom: 50px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 20px; z-index: 2000;
+            position: absolute; bottom: 30px; left: 50%;
+            transform: translateX(-50%); display: flex; gap: 15px; z-index: 2000;
         }
 
         .btn {
-            padding: 20px 40px; font-size: 18px; font-weight: bold; cursor: pointer;
-            color: white; border: none; border-radius: 50px;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
-            transition: all 0.2s;
+            padding: 15px 30px; font-size: 16px; font-weight: bold; cursor: pointer;
+            color: white; border: none; border-radius: 30px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: all 0.2s; background: #3498db;
         }
-        #reset-btn { background: #ff4757; }
-        #play-btn { background: #2ed573; }
+        .btn:active { transform: scale(0.95); }
+        .btn.active { background: #2ecc71; border: 2px solid white; }
     </style>
 </head>
 <body>
     <div id="debug-log">Status: Initializing...</div>
     
-    <div class="controls" id="ui-panel" style="display: none;">
-        <button id="reset-btn" class="btn">リセット & 正面</button>
-        <button id="play-btn" class="btn">アニメーション再開</button>
-    </div>
+    <div class="controls" id="ui-panel">
+        </div>
 
     <script type="importmap">
         {
@@ -55,8 +52,6 @@
 
         const logElement = document.getElementById('debug-log');
         const uiPanel = document.getElementById('ui-panel');
-        const resetBtn = document.getElementById('reset-btn');
-        const playBtn = document.getElementById('play-btn');
         function debugLog(msg) { logElement.innerText = "Status: " + msg; }
 
         const scene = new THREE.Scene();
@@ -73,14 +68,13 @@
         dirLight.position.set(5, 10, 7);
         scene.add(dirLight);
 
-        let mixer, model, currentAction, blobShadow;
-        const clock = new THREE.Clock();
+        let mixer, model, blobShadow;
+        let actions = {}; // アニメーションを格納するオブジェクト
+        let activeAction; // 現在再生中のアニメーション
+        
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.target.set(0, 1.0, 0);
-
-        // ★ 自動回転を停止
-        controls.autoRotate = false;
 
         // 影の作成
         function createShadowTexture() {
@@ -106,19 +100,59 @@
         new GLTFLoader().load('./model.glb', (gltf) => {
             model = gltf.scene;
             scene.add(model);
-            if (gltf.animations.length > 0) {
+            
+            if (gltf.animations && gltf.animations.length > 0) {
                 mixer = new THREE.AnimationMixer(model);
-                // 最初のモーションを再生
-                currentAction = mixer.clipAction(gltf.animations[0]);
-                currentAction.timeScale = 2.0; 
-                gltf.animations[0].tracks.forEach(t => t.setInterpolation(THREE.InterpolateDiscrete));
-                currentAction.play();
-                debugLog("Ready for Crossfade adjustment.");
+                
+                gltf.animations.forEach((clip, index) => {
+                    const action = mixer.clipAction(clip);
+                    action.timeScale = 2.0; 
+                    clip.tracks.forEach(t => t.setInterpolation(THREE.InterpolateDiscrete));
+                    
+                    // アニメーション名（またはIndex）で保存
+                    const name = clip.name || `Motion ${index}`;
+                    actions[name] = action;
+
+                    // 切り替えボタンを作成
+                    const btn = document.createElement('button');
+                    btn.className = 'btn';
+                    btn.innerText = name;
+                    btn.onclick = () => fadeToAction(name);
+                    uiPanel.appendChild(btn);
+
+                    // 最初に 0 番目のモーションを再生
+                    if (index === 0) {
+                        action.play();
+                        activeAction = action;
+                        btn.classList.add('active');
+                    }
+                });
+                debugLog(`Loaded ${gltf.animations.length} animations.`);
             }
         });
 
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
+        // ★ クロスフェード処理の関数
+        function fadeToAction(name) {
+            const nextAction = actions[name];
+            if (nextAction === activeAction) return;
+
+            // ボタンのスタイル更新
+            document.querySelectorAll('.btn').forEach(b => {
+                b.classList.toggle('active', b.innerText === name);
+            });
+
+            // 0.5秒かけて切り替え
+            const duration = 0.5;
+            nextAction.reset();
+            nextAction.setEffectiveWeight(1);
+            nextAction.play();
+            
+            // 現在のモーションから次のモーションへクロスフェード
+            activeAction.crossFadeTo(nextAction, duration, true);
+            activeAction = nextAction;
+
+            debugLog(`Switched to: ${name}`);
+        }
 
         function animate() {
             requestAnimationFrame(animate);
@@ -135,31 +169,6 @@
             renderer.render(scene, camera);
         }
         animate();
-
-        window.addEventListener('dblclick', (e) => {
-            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            const hits = raycaster.intersectObjects(scene.children, true);
-            uiPanel.style.display = (hits.length > 0) ? 'flex' : 'none';
-        });
-
-        resetBtn.addEventListener('click', () => {
-            if (currentAction) { 
-                currentAction.fadeOut(0.5); 
-                setTimeout(() => { currentAction.stop(); currentAction.reset(); }, 500); 
-            }
-            camera.position.set(0, 1.5, 4);
-            controls.update();
-        });
-
-        playBtn.addEventListener('click', () => {
-            if (currentAction) { 
-                currentAction.reset(); 
-                currentAction.fadeIn(0.5); 
-                currentAction.play(); 
-            }
-        });
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
