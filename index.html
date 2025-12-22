@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>3D Viewer - Smooth Reset</title>
+    <title>3D Viewer - Interactive App</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #f0f0f0; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -14,24 +14,32 @@
             pointer-events: none; z-index: 1000; border-radius: 4px;
         }
 
-        /* ボタン：下部中央に配置し、サイズを大きく */
-        #reset-btn {
-            position: absolute; display: none;
+        /* 下部中央のボタンエリア */
+        .controls {
+            position: absolute; display: none; /* 初期は非表示 */
             bottom: 50px; left: 50%; transform: translateX(-50%);
-            padding: 20px 50px; /* サイズアップ */
-            font-size: 18px; font-weight: bold; cursor: pointer;
-            background: #ff4757; color: white; border: none;
-            border-radius: 50px; /* 丸みをつけてモダンに */
-            box-shadow: 0 6px 20px rgba(255, 71, 87, 0.4);
-            z-index: 2000;
-            transition: background 0.2s, transform 0.1s;
+            display: flex; gap: 20px; z-index: 2000;
         }
-        #reset-btn:active { transform: translateX(-50%) scale(0.95); }
+
+        .btn {
+            padding: 20px 40px; font-size: 18px; font-weight: bold; cursor: pointer;
+            color: white; border: none; border-radius: 50px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+            transition: all 0.2s;
+        }
+        .btn:active { transform: scale(0.95); }
+
+        #reset-btn { background: #ff4757; }
+        #play-btn { background: #2ed573; }
     </style>
 </head>
 <body>
     <div id="debug-log">Status: Initializing...</div>
-    <button id="reset-btn">ポーズをリセットする</button>
+    
+    <div class="controls" id="ui-panel" style="display: none;">
+        <button id="reset-btn" class="btn">リセット & 正面</button>
+        <button id="play-btn" class="btn">アニメーション再開</button>
+    </div>
 
     <script type="importmap">
         {
@@ -48,7 +56,9 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
         const logElement = document.getElementById('debug-log');
+        const uiPanel = document.getElementById('ui-panel');
         const resetBtn = document.getElementById('reset-btn');
+        const playBtn = document.getElementById('play-btn');
         function debugLog(msg) { logElement.innerText = "Status: " + msg; }
 
         const scene = new THREE.Scene();
@@ -60,27 +70,28 @@
         renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
-        scene.add(ambientLight);
+        scene.add(new THREE.AmbientLight(0xffffff, 2.0));
         const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
         dirLight.position.set(5, 10, 7);
         scene.add(dirLight);
 
-        let mixer, model, action;
+        let mixer, action;
         const clock = new THREE.Clock();
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.target.set(0, 1.0, 0);
 
+        // オートターンの設定
+        controls.autoRotate = true; // 最初は回転させる
+        controls.autoRotateSpeed = 1.0;
+
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
-        const loader = new GLTFLoader();
-        loader.load('./model.glb', (gltf) => {
-            model = gltf.scene;
-            scene.add(model);
-            if (gltf.animations && gltf.animations.length > 0) {
-                mixer = new THREE.AnimationMixer(model);
+        new GLTFLoader().load('./model.glb', (gltf) => {
+            scene.add(gltf.scene);
+            if (gltf.animations.length > 0) {
+                mixer = new THREE.AnimationMixer(gltf.scene);
                 action = mixer.clipAction(gltf.animations[0]);
                 action.timeScale = 2.0; 
                 gltf.animations[0].tracks.forEach(t => t.setInterpolation(THREE.InterpolateDiscrete));
@@ -89,42 +100,55 @@
             }
         });
 
-        // ダブルクリック判定
-        window.addEventListener('dblclick', (event) => {
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        // ダブルクリックでUIを表示
+        window.addEventListener('dblclick', (e) => {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(scene.children, true);
-            
-            if (intersects.length > 0) {
-                resetBtn.style.display = 'block';
-            } else {
-                resetBtn.style.display = 'none';
-            }
+            const hits = raycaster.intersectObjects(scene.children, true);
+            uiPanel.style.display = hits.length > 0 ? 'flex' : 'none';
         });
 
-        // 滑らかにリセットする処理
+        // マウス操作中はオートターンを停止
+        controls.addEventListener('start', () => {
+            controls.autoRotate = false;
+        });
+
+        // 操作を止めてから3秒後にオートターンを再開させる処理
+        let rotateTimer;
+        controls.addEventListener('end', () => {
+            clearTimeout(rotateTimer);
+            rotateTimer = setTimeout(() => {
+                controls.autoRotate = true;
+            }, 3000); // 3秒間放置で回転開始
+        });
+
+        // リセット & カメラを正面に戻す
         resetBtn.addEventListener('click', () => {
             if (action) {
-                // 0.5秒かけて現在のポーズから「静止状態（ウェイト0）」へ移行させる
-                action.fadeOut(0.5); 
-                
-                // 0.5秒後に完全に停止して時間を0に戻すタイマー
-                setTimeout(() => {
-                    action.stop(); 
-                    action.reset();
-                    // 必要ならここで再度 play() すれば、0からまた始まります
-                    // 今回は停止状態でキープします
-                    debugLog("Smoothly Reset.");
-                }, 500);
+                action.fadeOut(0.5);
+                setTimeout(() => { action.stop(); action.reset(); }, 500);
             }
-            resetBtn.style.display = 'none';
+            // カメラ位置を滑らかに戻す (OrbitControlsのターゲットは維持)
+            camera.position.set(0, 1.5, 4);
+            controls.update();
+            debugLog("Reset & Camera centered.");
+        });
+
+        // アニメーション再開
+        playBtn.addEventListener('click', () => {
+            if (action) {
+                action.reset();
+                action.fadeIn(0.5); // 滑らかに動き始める
+                action.play();
+                debugLog("Animation Resumed.");
+            }
         });
 
         function animate() {
             requestAnimationFrame(animate);
             if (mixer) mixer.update(1 / 60); 
-            controls.update();
+            controls.update(); // オートターンの更新に必要
             renderer.render(scene, camera);
         }
         animate();
