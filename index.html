@@ -2,38 +2,33 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>3D Viewer - Blob Shadow Mode</title>
+    <title>3D Viewer - Soft Blob Shadow</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #f0f0f0; }
         canvas { display: block; width: 100vw; height: 100vh; }
-        
         #debug-log {
             position: absolute; top: 10px; left: 10px;
             background: rgba(0,0,0,0.7); color: white;
             padding: 8px 12px; font-family: monospace; font-size: 12px;
             pointer-events: none; z-index: 1000; border-radius: 4px;
         }
-
         .controls {
             position: absolute; display: none;
             bottom: 50px; left: 50%; transform: translateX(-50%);
             display: flex; gap: 20px; z-index: 2000;
         }
-
         .btn {
             padding: 20px 40px; font-size: 18px; font-weight: bold; cursor: pointer;
             color: white; border: none; border-radius: 50px;
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
             transition: all 0.2s;
         }
-        .btn:active { transform: scale(0.95); }
         #reset-btn { background: #ff4757; }
         #play-btn { background: #2ed573; }
     </style>
 </head>
 <body>
     <div id="debug-log">Status: Initializing...</div>
-    
     <div class="controls" id="ui-panel" style="display: none;">
         <button id="reset-btn" class="btn">リセット & 正面</button>
         <button id="play-btn" class="btn">アニメーション再開</button>
@@ -79,23 +74,34 @@
         controls.enableDamping = true;
         controls.target.set(0, 1.0, 0);
         controls.autoRotate = true;
-        controls.autoRotateSpeed = 1.0;
 
-        // --- 丸い影 (Blob Shadow) の作成 ---
-        const shadowGeo = new THREE.CircleGeometry(0.4, 32); // サイズは0.4
+        // --- ★ グラデーションテクスチャの作成 ---
+        function createShadowTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const context = canvas.getContext('2d');
+            const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
+            gradient.addColorStop(0, 'rgba(0,0,0,0.6)'); // 中心：濃い黒
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');   // 外側：透明
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, 128, 128);
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // --- 影の作成 ---
+        const shadowGeo = new THREE.PlaneGeometry(1.2, 1.2); // 板のサイズ
         const shadowMat = new THREE.MeshBasicMaterial({ 
-            color: 0x000000, 
+            map: createShadowTexture(),
             transparent: true, 
-            opacity: 0.4,
-            depthWrite: false // キャラクターと重なった時のチラつき防止
+            depthWrite: false,
+            side: THREE.DoubleSide
         });
         blobShadow = new THREE.Mesh(shadowGeo, shadowMat);
-        blobShadow.rotation.x = -Math.PI / 2; // 地面に平らに置く
-        blobShadow.position.y = 0.01; // 地面（0）よりわずかに上に浮かせてチラつきを防止
+        blobShadow.rotation.x = -Math.PI / 2;
+        // 地面に密着させるため高さを 0.005 (0.5cm) まで下げました
+        blobShadow.position.y = 0.005; 
         scene.add(blobShadow);
-
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
 
         new GLTFLoader().load('./model.glb', (gltf) => {
             model = gltf.scene;
@@ -106,31 +112,26 @@
                 action.timeScale = 2.0; 
                 gltf.animations[0].tracks.forEach(t => t.setInterpolation(THREE.InterpolateDiscrete));
                 action.play();
-                debugLog("Blob Shadow Active. Double-click model.");
+                debugLog("Soft Shadow Active.");
             }
         });
 
-        // 影の更新ロジック
         function updateShadow() {
             if (!model || !blobShadow) return;
-
-            // 1. 影の位置をモデルの真下に合わせる (X, Z軸)
             blobShadow.position.x = model.position.x;
             blobShadow.position.z = model.position.z;
 
-            // 2. ボーンやメッシュの高さ（Y軸）を取得
-            // ※アニメーションでモデル自体が浮く場合に対応
             const height = model.position.y; 
-
-            // 3. 高さに合わせて「透明度」と「大きさ」を変化させる
-            // 高くなるほど薄く (opacity減)、小さく (scale減) なる
-            const opacity = Math.max(0, 0.4 - height * 0.3);
-            const scale = Math.max(0.1, 1.0 - height * 0.5);
+            // グラデーションに合わせて減衰を少しマイルドに調整
+            const opacity = Math.max(0, 1.0 - height * 0.4);
+            const scale = Math.max(0.1, 1.0 - height * 0.3);
 
             blobShadow.material.opacity = opacity;
             blobShadow.scale.set(scale, scale, 1);
         }
 
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
         window.addEventListener('dblclick', (e) => {
             mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
@@ -153,7 +154,6 @@
             }
             camera.position.set(0, 1.5, 4);
             controls.update();
-            debugLog("Reset & Camera centered.");
         });
 
         playBtn.addEventListener('click', () => {
@@ -161,16 +161,13 @@
                 action.reset();
                 action.fadeIn(0.5);
                 action.play();
-                debugLog("Animation Resumed.");
             }
         });
 
         function animate() {
             requestAnimationFrame(animate);
             if (mixer) mixer.update(1 / 60); 
-            
-            updateShadow(); // 影の更新を毎フレーム実行
-            
+            updateShadow();
             controls.update();
             renderer.render(scene, camera);
         }
