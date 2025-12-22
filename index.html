@@ -74,13 +74,19 @@ https://okomecraft.github.io/202512142307/
                     //     action.play();
                     // });
                     // アニメーション再生部分を以下のように書き換え
+                    // gltf.animations.forEach((clip) => {
+                    //     const action = mixer.clipAction(clip);
+                        
+                    //     // 補間方法を「離散（コマ送り）」ではなく「滑らか」に強制する
+                    //     // （通常はデフォルトでOKですが、念のため設定します）
+                    //     action.setLoop(THREE.LoopRepeat);
+                        
+                    //     action.play();
+                    // });
                     gltf.animations.forEach((clip) => {
                         const action = mixer.clipAction(clip);
-                        
-                        // 補間方法を「離散（コマ送り）」ではなく「滑らか」に強制する
-                        // （通常はデフォルトでOKですが、念のため設定します）
-                        action.setLoop(THREE.LoopRepeat);
-                        
+                        // 補間を「線形」に指定（足の先端などを滑らかにつなぐ）
+                        action.setInterpolation(THREE.InterpolateLinear); 
                         action.play();
                     });
                 }
@@ -117,6 +123,7 @@ https://okomecraft.github.io/202512142307/
     </script>
 </body>
 </html>
+
 
 
 
