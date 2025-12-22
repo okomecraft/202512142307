@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>3D Viewer - Animation Crossfade</title>
+    <title>3D Viewer - Sequential Animation</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #f0f0f0; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -14,7 +14,6 @@
             pointer-events: none; z-index: 1000; border-radius: 4px;
         }
 
-        /* 切り替えボタンのコンテナ */
         .controls {
             position: absolute; bottom: 30px; left: 50%;
             transform: translateX(-50%); display: flex; gap: 15px; z-index: 2000;
@@ -24,17 +23,14 @@
             padding: 15px 30px; font-size: 16px; font-weight: bold; cursor: pointer;
             color: white; border: none; border-radius: 30px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            transition: all 0.2s; background: #3498db;
+            transition: all 0.2s; background: #7f8c8d;
         }
-        .btn:active { transform: scale(0.95); }
         .btn.active { background: #2ecc71; border: 2px solid white; }
     </style>
 </head>
 <body>
     <div id="debug-log">Status: Initializing...</div>
-    
-    <div class="controls" id="ui-panel">
-        </div>
+    <div class="controls" id="ui-panel"></div>
 
     <script type="importmap">
         {
@@ -69,9 +65,10 @@
         scene.add(dirLight);
 
         let mixer, model, blobShadow;
-        let actions = {}; // アニメーションを格納するオブジェクト
-        let activeAction; // 現在再生中のアニメーション
-        
+        let actions = {}; 
+        let activeAction = null; 
+        let isTransitioning = false; // 切り替え中フラグ
+
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.target.set(0, 1.0, 0);
@@ -106,52 +103,60 @@
                 
                 gltf.animations.forEach((clip, index) => {
                     const action = mixer.clipAction(clip);
-                    action.timeScale = 2.0; 
+                    // ここでの timeScale は 1.0 (標準) にし、必要なら後で個別に調整します
+                    action.timeScale = 1.0; 
                     clip.tracks.forEach(t => t.setInterpolation(THREE.InterpolateDiscrete));
                     
-                    // アニメーション名（またはIndex）で保存
                     const name = clip.name || `Motion ${index}`;
                     actions[name] = action;
 
-                    // 切り替えボタンを作成
                     const btn = document.createElement('button');
                     btn.className = 'btn';
                     btn.innerText = name;
-                    btn.onclick = () => fadeToAction(name);
+                    btn.onclick = () => switchAction(name);
                     uiPanel.appendChild(btn);
-
-                    // 最初に 0 番目のモーションを再生
-                    if (index === 0) {
-                        action.play();
-                        activeAction = action;
-                        btn.classList.add('active');
-                    }
                 });
-                debugLog(`Loaded ${gltf.animations.length} animations.`);
+                debugLog("Model Loaded. Select animation to start.");
+                // 初期状態は何も再生せず、直立不動になります
             }
         });
 
-        // ★ クロスフェード処理の関数
-        function fadeToAction(name) {
+        // ★ 停止を経て切り替える関数
+        function switchAction(name) {
+            if (isTransitioning) return; // 連打防止
             const nextAction = actions[name];
             if (nextAction === activeAction) return;
 
-            // ボタンのスタイル更新
+            isTransitioning = true;
+            const fadeTime = 0.5;
+
+            // ボタンの見た目更新
             document.querySelectorAll('.btn').forEach(b => {
                 b.classList.toggle('active', b.innerText === name);
             });
 
-            // 0.5秒かけて切り替え
-            const duration = 0.5;
+            if (activeAction) {
+                // 1. 現在のアニメーションを減衰させて停止
+                activeAction.fadeOut(fadeTime);
+                
+                setTimeout(() => {
+                    activeAction.stop();
+                    startNext(nextAction, fadeTime);
+                }, fadeTime * 1000);
+            } else {
+                // 初回再生時
+                startNext(nextAction, fadeTime);
+            }
+        }
+
+        function startNext(nextAction, fadeTime) {
             nextAction.reset();
             nextAction.setEffectiveWeight(1);
+            nextAction.fadeIn(fadeTime);
             nextAction.play();
-            
-            // 現在のモーションから次のモーションへクロスフェード
-            activeAction.crossFadeTo(nextAction, duration, true);
             activeAction = nextAction;
-
-            debugLog(`Switched to: ${name}`);
+            isTransitioning = false;
+            debugLog("Playing: " + nextAction.getClip().name);
         }
 
         function animate() {
