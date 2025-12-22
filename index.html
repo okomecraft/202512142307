@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>3D Viewer - Dynamic Motion</title>
+    <title>3D Viewer - Final Adjustment</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #f0f0f0; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -47,9 +47,10 @@
         renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 1.8);
+        // ライト設定（少し明るめにしています）
+        const ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
         scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
         dirLight.position.set(5, 10, 7);
         scene.add(dirLight);
 
@@ -59,7 +60,7 @@
         controls.enableDamping = true;
         controls.target.set(0, 1.0, 0);
 
-        debugLog("Loading model...");
+        debugLog("Loading slow-mo GLB...");
 
         const loader = new GLTFLoader();
         loader.load(
@@ -67,7 +68,7 @@
             function (gltf) {
                 const model = gltf.scene;
                 scene.add(model);
-                debugLog("Model added. Applying motion settings...");
+                debugLog("Model Loaded. Syncing speed...");
 
                 if (gltf.animations && gltf.animations.length > 0) {
                     mixer = new THREE.AnimationMixer(model);
@@ -75,29 +76,26 @@
                     gltf.animations.forEach((clip) => {
                         const action = mixer.clipAction(clip);
                         
-                        // ★重要：アニメーションの各トラックに対して、
-                        // 勝手な補完（スムージング）を抑制する設定
+                        // ★1. タイムストレッチ200(2倍)のデータを等倍速に戻す
+                        action.timeScale = 2.0; 
+
+                        // ★2. 中間の緩い計算を捨て、コマ打ちを優先する
                         clip.tracks.forEach(track => {
-                            // もしこれでも「緩い」場合は THREE.InterpolateDiscrete に変えると
-                            // 完全にキーフレームのみのパキパキした動きになります
-                            track.setInterpolation(THREE.InterpolateLinear);
+                            track.setInterpolation(THREE.InterpolateDiscrete);
                         });
 
                         action.play();
                     });
-                    debugLog("Animation playing (Dynamic Mode).");
-                } else {
-                    debugLog("No animations found.");
+                    debugLog("Animation Active: High-density mode.");
                 }
             },
             undefined,
-            function (error) {
-                debugLog("Error: " + error.message);
-            }
+            function (error) { debugLog("Error: " + error.message); }
         );
 
         function animate() {
             requestAnimationFrame(animate);
+            // deltaを直接取得（制限なしでスムーズな計算を優先）
             const delta = clock.getDelta();
             if (mixer) mixer.update(delta);
             controls.update();
