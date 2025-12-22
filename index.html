@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>3D Viewer - Character Navigation</title>
+    <title>3D Viewer - Smart Turn Navigation</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #f0f0f0; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -22,11 +22,10 @@
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
             transition: all 0.2s; background: #7f8c8d;
         }
-        .btn.active { background: #2ecc71; border: 2px solid white; }
     </style>
 </head>
 <body>
-    <div id="debug-log">Status: Click ground to move Mitsuhashi-kun!</div>
+    <div id="debug-log">Status: Click ground!</div>
     <div class="controls" id="ui-panel"></div>
 
     <script type="importmap">
@@ -49,7 +48,7 @@
 
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 5, 10); // 少し見下ろす位置に調整
+        camera.position.set(0, 5, 10);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -61,11 +60,7 @@
         dirLight.position.set(5, 10, 7);
         scene.add(dirLight);
 
-        // 地面の作成（クリック判定用）
-        const ground = new THREE.Mesh(
-            new THREE.PlaneGeometry(100, 100),
-            new THREE.MeshBasicMaterial({ visible: false }) // 見えないが判定はある
-        );
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshBasicMaterial({ visible: false }));
         ground.rotation.x = -Math.PI / 2;
         scene.add(ground);
 
@@ -74,30 +69,10 @@
         let activeAction = null; 
         let targetPosition = null;
         let isMoving = false;
-        let isJumping = false;
+        let isProcessing = false;
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
-
-        // 影の作成
-        function createShadowTexture() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 128; canvas.height = 128;
-            const context = canvas.getContext('2d');
-            const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
-            gradient.addColorStop(0, 'rgba(0,0,0,0.6)');
-            gradient.addColorStop(1, 'rgba(0,0,0,0)');
-            context.fillStyle = gradient;
-            context.fillRect(0, 0, 128, 128);
-            return new THREE.CanvasTexture(canvas);
-        }
-        blobShadow = new THREE.Mesh(
-            new THREE.PlaneGeometry(1.2, 1.2),
-            new THREE.MeshBasicMaterial({ map: createShadowTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide })
-        );
-        blobShadow.rotation.x = -Math.PI / 2;
-        blobShadow.position.y = 0.002; 
-        scene.add(blobShadow);
 
         new GLTFLoader().load('./model.glb', (gltf) => {
             model = gltf.scene;
@@ -105,110 +80,117 @@
             mixer = new THREE.AnimationMixer(model);
             gltf.animations.forEach((clip, index) => {
                 const action = mixer.clipAction(clip);
-                const name = clip.name || `Motion ${index}`;
-                actions[name] = action;
-                // ボタン生成
+                actions[clip.name || `Motion ${index}`] = action;
                 const btn = document.createElement('button');
                 btn.className = 'btn';
-                btn.innerText = name;
-                btn.onclick = (e) => { e.stopPropagation(); switchAction(name); };
+                btn.innerText = clip.name || `Motion ${index}`;
+                btn.onclick = (e) => { e.stopPropagation(); switchAction(clip.name); };
                 uiPanel.appendChild(btn);
             });
         });
 
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
-
-        // 地面クリック時のイベント
         window.addEventListener('mousedown', (event) => {
-            if (!model || isMoving || isJumping) return;
-
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            if (!model || isProcessing || isMoving) return;
+            const mouse = new THREE.Vector2(
+                (event.clientX / window.innerWidth) * 2 - 1,
+                -(event.clientY / window.innerHeight) * 2 + 1
+            );
+            const raycaster = new THREE.Raycaster();
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObject(ground);
-
             if (intersects.length > 0) {
                 targetPosition = intersects[0].point;
-                startNavigationSequence();
+                processNavigation();
             }
         });
 
-        // ナビゲーションシーケンス
-        async function startNavigationSequence() {
-            debugLog("Sequence Start: Rotating & Jumping...");
-            isJumping = true;
+        async function processNavigation() {
+            isProcessing = true;
+            debugLog("Turn Sequence Start...");
 
-            // 1. 方向を向く
-            const lookTarget = new THREE.Vector3(targetPosition.x, model.position.y, targetPosition.z);
-            model.lookAt(lookTarget);
-
-            // 2. 「垂直ジャンプ」開始
-            // ※GLB内の実際のアニメーション名に合わせて書き換えてください
-            const jumpAction = actions['垂直ジャンプ'] || Object.values(actions)[1]; 
+            const jumpAction = actions['垂直ジャンプ'] || Object.values(actions)[1];
             const runAction = actions['走行'] || Object.values(actions)[0];
 
-            await fadeTo(jumpAction, 0.2);
-            
-            // ジャンプモーションの終わりを待つ（簡易的にタイマーで制御、またはmixerのfinishイベント）
-            setTimeout(async () => {
-                isJumping = false;
-                isMoving = true;
-                debugLog("Moving to target...");
-                await fadeTo(runAction, 0.2);
-            }, 1000); // ジャンプにかかる想定時間
+            // 1. 向きが合うまでジャンプを繰り返す
+            while (true) {
+                const toTarget = new THREE.Vector3().subVectors(targetPosition, model.position);
+                toTarget.y = 0;
+                const targetAngle = Math.atan2(toTarget.x, toTarget.z);
+                let diffAngle = targetAngle - model.rotation.y;
+
+                // -PI to PI の範囲に正規化
+                while (diffAngle > Math.PI) diffAngle -= Math.PI * 2;
+                while (diffAngle < -Math.PI) diffAngle += Math.PI * 2;
+
+                // 許容範囲（5度以内）なら終了
+                if (Math.abs(diffAngle) < THREE.MathUtils.degToRad(5)) break;
+
+                // 今回のジャンプで回転する量を決める（最大60度）
+                const maxTurn = THREE.MathUtils.degToRad(60);
+                const stepTurn = Math.sign(diffAngle) * Math.min(Math.abs(diffAngle), maxTurn);
+
+                // ジャンプ開始
+                await fadeTo(jumpAction, 0.1);
+                
+                // ジャンプの滞空時間に合わせて回転（ここでは0.8秒で回転させる例）
+                const startRotation = model.rotation.y;
+                const startTime = performance.now();
+                const turnDuration = 800; 
+
+                await new Promise(resolve => {
+                    function rotate() {
+                        const elapsed = performance.now() - startTime;
+                        const progress = Math.min(elapsed / turnDuration, 1);
+                        model.rotation.y = startRotation + stepTurn * progress;
+                        if (progress < 1) requestAnimationFrame(rotate);
+                        else resolve();
+                    }
+                    rotate();
+                });
+
+                await new Promise(r => setTimeout(r, 100)); // 着地の間
+            }
+
+            // 2. 走行へ移行
+            debugLog("Moving...");
+            await fadeTo(runAction, 0.3);
+            isMoving = true;
+            isProcessing = false;
         }
 
         async function fadeTo(nextAction, duration) {
-            if (!nextAction) return;
+            if (!nextAction || activeAction === nextAction) return;
             if (activeAction) activeAction.fadeOut(duration);
-            nextAction.reset().fadeIn(duration).play();
+            nextAction.reset().setEffectiveWeight(1).fadeIn(duration).play();
             activeAction = nextAction;
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            const delta = 1 / 60;
-            if (mixer) mixer.update(delta); 
+            if (mixer) mixer.update(1/60);
 
             if (isMoving && model && targetPosition) {
-                const moveSpeed = 0.05;
-                const distance = model.position.distanceTo(targetPosition);
-                
-                if (distance > 0.1) {
-                    // 目標方向へ移動
-                    const direction = new THREE.Vector3().subVectors(targetPosition, model.position).normalize();
-                    model.position.add(direction.multiplyScalar(moveSpeed));
+                const dist = model.position.distanceTo(new THREE.Vector3(targetPosition.x, model.position.y, targetPosition.z));
+                if (dist > 0.1) {
+                    const dir = new THREE.Vector3().subVectors(targetPosition, model.position);
+                    dir.y = 0;
+                    model.position.add(dir.normalize().multiplyScalar(0.06));
                 } else {
-                    // 到着
                     isMoving = false;
                     if (activeAction) activeAction.fadeOut(0.5);
                     activeAction = null;
-                    debugLog("Arrived!");
+                    debugLog("Goal!");
                 }
             }
 
-            if (model && blobShadow) {
-                blobShadow.position.set(model.position.x, 0.002, model.position.z);
-                blobShadow.material.opacity = Math.max(0, 1.0 - model.position.y * 0.4);
-                const s = Math.max(0.1, 1.0 - model.position.y * 0.3);
-                blobShadow.scale.set(s, s, 1);
+            if (model) {
+                const shadow = scene.children.find(c => c.geometry?.type === 'PlaneGeometry' && c !== ground);
+                if (shadow) shadow.position.set(model.position.x, 0.002, model.position.z);
             }
             controls.update();
             renderer.render(scene, camera);
         }
         animate();
-
-        // 以前の switchAction もトグル用に残す
-        function switchAction(name) {
-            const next = actions[name];
-            if (activeAction === next) {
-                activeAction.fadeOut(0.5);
-                activeAction = null;
-            } else {
-                fadeTo(next, 0.5);
-            }
-        }
     </script>
 </body>
 </html>
