@@ -2,21 +2,34 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>3D Viewer - Soft Blob Shadow</title>
+    <title>3D Viewer - Mitsuhashi-kun</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #f0f0f0; }
         canvas { display: block; width: 100vw; height: 100vh; }
+        
         #debug-log {
             position: absolute; top: 10px; left: 10px;
             background: rgba(0,0,0,0.7); color: white;
             padding: 8px 12px; font-family: monospace; font-size: 12px;
             pointer-events: none; z-index: 1000; border-radius: 4px;
         }
+
+        /* キャラクター名ラベル */
+        #name-label {
+            position: absolute; display: none;
+            padding: 5px 15px; background: rgba(255, 255, 255, 0.9);
+            color: #333; font-weight: bold; border-radius: 20px;
+            border: 2px solid #ff4757; pointer-events: none;
+            transform: translate(-50%, -100%); z-index: 1500;
+            font-family: sans-serif;
+        }
+
         .controls {
             position: absolute; display: none;
             bottom: 50px; left: 50%; transform: translateX(-50%);
             display: flex; gap: 20px; z-index: 2000;
         }
+
         .btn {
             padding: 20px 40px; font-size: 18px; font-weight: bold; cursor: pointer;
             color: white; border: none; border-radius: 50px;
@@ -29,6 +42,8 @@
 </head>
 <body>
     <div id="debug-log">Status: Initializing...</div>
+    <div id="name-label">ミツハシくん</div>
+    
     <div class="controls" id="ui-panel" style="display: none;">
         <button id="reset-btn" class="btn">リセット & 正面</button>
         <button id="play-btn" class="btn">アニメーション再開</button>
@@ -49,6 +64,7 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
         const logElement = document.getElementById('debug-log');
+        const nameLabel = document.getElementById('name-label');
         const uiPanel = document.getElementById('ui-panel');
         const resetBtn = document.getElementById('reset-btn');
         const playBtn = document.getElementById('play-btn');
@@ -75,32 +91,27 @@
         controls.target.set(0, 1.0, 0);
         controls.autoRotate = true;
 
-        // --- ★ グラデーションテクスチャの作成 ---
+        // 影のテクスチャ作成
         function createShadowTexture() {
             const canvas = document.createElement('canvas');
-            canvas.width = 128;
-            canvas.height = 128;
+            canvas.width = 128; canvas.height = 128;
             const context = canvas.getContext('2d');
             const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
-            gradient.addColorStop(0, 'rgba(0,0,0,0.6)'); // 中心：濃い黒
-            gradient.addColorStop(1, 'rgba(0,0,0,0)');   // 外側：透明
+            gradient.addColorStop(0, 'rgba(0,0,0,0.6)');
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
             context.fillStyle = gradient;
             context.fillRect(0, 0, 128, 128);
             return new THREE.CanvasTexture(canvas);
         }
 
-        // --- 影の作成 ---
-        const shadowGeo = new THREE.PlaneGeometry(1.2, 1.2); // 板のサイズ
-        const shadowMat = new THREE.MeshBasicMaterial({ 
-            map: createShadowTexture(),
-            transparent: true, 
-            depthWrite: false,
-            side: THREE.DoubleSide
-        });
-        blobShadow = new THREE.Mesh(shadowGeo, shadowMat);
+        // 影の作成
+        blobShadow = new THREE.Mesh(
+            new THREE.PlaneGeometry(1.2, 1.2),
+            new THREE.MeshBasicMaterial({ map: createShadowTexture(), transparent: true, depthWrite: false, side: THREE.DoubleSide })
+        );
         blobShadow.rotation.x = -Math.PI / 2;
-        // 地面に密着させるため高さを 0.005 (0.5cm) まで下げました
-        blobShadow.position.y = 0.005; 
+        // ★微調整ポイント：ここを 0.001 や -0.001 などに調整してください
+        blobShadow.position.y = 0.002; 
         scene.add(blobShadow);
 
         new GLTFLoader().load('./model.glb', (gltf) => {
@@ -112,66 +123,70 @@
                 action.timeScale = 2.0; 
                 gltf.animations[0].tracks.forEach(t => t.setInterpolation(THREE.InterpolateDiscrete));
                 action.play();
-                debugLog("Soft Shadow Active.");
+                debugLog("Mitsuhashi-kun is here.");
             }
         });
 
-        function updateShadow() {
-            if (!model || !blobShadow) return;
-            blobShadow.position.x = model.position.x;
-            blobShadow.position.z = model.position.z;
-
-            const height = model.position.y; 
-            // グラデーションに合わせて減衰を少しマイルドに調整
-            const opacity = Math.max(0, 1.0 - height * 0.4);
-            const scale = Math.max(0.1, 1.0 - height * 0.3);
-
-            blobShadow.material.opacity = opacity;
-            blobShadow.scale.set(scale, scale, 1);
-        }
-
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
-        window.addEventListener('dblclick', (e) => {
+
+        // 毎フレームの処理
+        function animate() {
+            requestAnimationFrame(animate);
+            if (mixer) mixer.update(1 / 60); 
+            
+            if (model && blobShadow) {
+                blobShadow.position.x = model.position.x;
+                blobShadow.position.z = model.position.z;
+                blobShadow.material.opacity = Math.max(0, 1.0 - model.position.y * 0.4);
+                blobShadow.scale.set(Math.max(0.1, 1.0 - model.position.y * 0.3), Math.max(0.1, 1.0 - model.position.y * 0.3), 1);
+            }
+
+            // --- 名前ラベルの追従処理 ---
+            if (model && nameLabel.style.display === 'block') {
+                const vector = new THREE.Vector3();
+                // キャラクターの頭上付近（高さ2.0m地点）を取得
+                vector.setFromMatrixPosition(model.matrixWorld);
+                vector.y += 2.0; 
+                vector.project(camera);
+
+                const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+                const y = -(vector.y * 0.5 - 0.5) * window.innerHeight;
+                nameLabel.style.left = `${x}px`;
+                nameLabel.style.top = `${y}px`;
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // マウス移動（ホバー）判定
+        window.addEventListener('mousemove', (e) => {
             mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
             const hits = raycaster.intersectObjects(scene.children, true);
-            uiPanel.style.display = hits.length > 0 ? 'flex' : 'none';
+            
+            // モデルに当たっていれば名前を表示
+            nameLabel.style.display = (hits.length > 0) ? 'block' : 'none';
         });
 
-        controls.addEventListener('start', () => { controls.autoRotate = false; });
-        let rotateTimer;
-        controls.addEventListener('end', () => {
-            clearTimeout(rotateTimer);
-            rotateTimer = setTimeout(() => { controls.autoRotate = true; }, 3000);
+        window.addEventListener('dblclick', (e) => {
+            raycaster.setFromCamera(mouse, camera);
+            const hits = raycaster.intersectObjects(scene.children, true);
+            uiPanel.style.display = (hits.length > 0) ? 'flex' : 'none';
         });
 
         resetBtn.addEventListener('click', () => {
-            if (action) {
-                action.fadeOut(0.5);
-                setTimeout(() => { action.stop(); action.reset(); }, 500);
-            }
+            if (action) { action.fadeOut(0.5); setTimeout(() => { action.stop(); action.reset(); }, 500); }
             camera.position.set(0, 1.5, 4);
             controls.update();
         });
 
         playBtn.addEventListener('click', () => {
-            if (action) {
-                action.reset();
-                action.fadeIn(0.5);
-                action.play();
-            }
+            if (action) { action.reset(); action.fadeIn(0.5); action.play(); }
         });
-
-        function animate() {
-            requestAnimationFrame(animate);
-            if (mixer) mixer.update(1 / 60); 
-            updateShadow();
-            controls.update();
-            renderer.render(scene, camera);
-        }
-        animate();
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
