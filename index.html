@@ -52,7 +52,7 @@ https://okomecraft.github.io/202512142307/
         // カメラ操作設定
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;  // 操作に滑らかさを出す
-        controls.dampingFactor = 0.05;  
+        controls.dampingFactor = 0.5;   // 0.05  
         controls.zoomSpeed = 0.4;       // ズーム感度をマイルドに
         controls.target.set(0, 1.0, 0); // ★注視点を地面からキャラクターの高さ（約1m）へオフセット
 
@@ -109,6 +109,7 @@ https://okomecraft.github.io/202512142307/
     </script>
 </body>
 </html>
+
 
 
 
