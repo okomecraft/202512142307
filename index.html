@@ -111,7 +111,7 @@
         );
         blobShadow.rotation.x = -Math.PI / 2;
         // ★微調整ポイント：ここを 0.001 や -0.001 などに調整してください
-        blobShadow.position.y = 0.002; 
+        blobShadow.position.y = 0.005; 
         scene.add(blobShadow);
 
         new GLTFLoader().load('./model.glb', (gltf) => {
@@ -196,3 +196,4 @@
     </script>
 </body>
 </html>
+
