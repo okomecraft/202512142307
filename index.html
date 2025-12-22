@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>3D Viewer - Fixed</title>
+    <title>3D Viewer - Dynamic Motion</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #f0f0f0; }
         canvas { display: block; width: 100vw; height: 100vh; }
@@ -67,16 +67,25 @@
             function (gltf) {
                 const model = gltf.scene;
                 scene.add(model);
-                debugLog("Model added. Processing animations...");
+                debugLog("Model added. Applying motion settings...");
 
                 if (gltf.animations && gltf.animations.length > 0) {
                     mixer = new THREE.AnimationMixer(model);
+                    
                     gltf.animations.forEach((clip) => {
                         const action = mixer.clipAction(clip);
-                        // 余計な命令を削除してシンプルに再生
+                        
+                        // ★重要：アニメーションの各トラックに対して、
+                        // 勝手な補完（スムージング）を抑制する設定
+                        clip.tracks.forEach(track => {
+                            // もしこれでも「緩い」場合は THREE.InterpolateDiscrete に変えると
+                            // 完全にキーフレームのみのパキパキした動きになります
+                            track.setInterpolation(THREE.InterpolateLinear);
+                        });
+
                         action.play();
                     });
-                    debugLog("Animation playing.");
+                    debugLog("Animation playing (Dynamic Mode).");
                 } else {
                     debugLog("No animations found.");
                 }
@@ -89,7 +98,6 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            // deltaの取得方法を最も標準的なものに変更
             const delta = clock.getDelta();
             if (mixer) mixer.update(delta);
             controls.update();
